@@ -259,8 +259,14 @@ async def analyze_url(request: ScanRequest, background_tasks: BackgroundTasks):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    return "<html><body><h1>WADE ONLINE v6.0</h1></body></html>"
-
+    return """
+    <html>
+        <body style="background-color: #050505; color: #00f3ff; font-family: monospace; text-align: center; margin-top: 20%;">
+            <h1>🛡️ WADE ENGINE ACTIVE</h1>
+            <p>Web AI Defense Engine API is currently running and monitoring traffic.</p>
+        </body>
+    </html>
+    """
 # --- DYNAMIC THREAT INTEL: TRANCO TOP 10K ---
 trusted_cache = {
     "timestamp": 0,
