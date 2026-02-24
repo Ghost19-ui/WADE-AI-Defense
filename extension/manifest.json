@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
   "name": "WADE - AI Defense Engine",
-  "version": "4.2",
+  "version": "5.0",
   "description": "Real-time AI cybersecurity protection for browsers.",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
     "downloads",
-    "notifications"
-],
+    "notifications",
+    "alarms"
+  ],
   "host_permissions": [
     "http://*/*",
     "https://*/*"
