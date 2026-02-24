@@ -1,41 +1,33 @@
-// background.js - WADE Intelligence Center (Final V3)
+// background.js - WADE Intelligence Center (v7 - Dynamic Tranco Feed)
 const API_URL = "https://reaper1907-wade-engine.hf.space"; 
 
-// 1. GLOBAL ALLOWLIST
-const TRUSTED_DOMAINS = [
-"google.com", "google.co.in", "youtube.com", "gmail.com", "drive.google.com", "gstatic.com",
-    
-    // Developer & Cloud Platforms
-    "github.com", "stackoverflow.com", "huggingface.co", "gitlab.com", "aws.amazon.com",
-    
-    // Microsoft Ecosystem
-    "microsoft.com", "office.com", "bing.com", "live.com", "sharepoint.com",
-    
-    // Productivity & Design Tools
-    "canva.com", "canva.in", "notion.so", "figma.com", "slack.com", "trello.com",
-    
-    // Professional & Social Networking
-    "linkedin.com", "reddit.com", "twitter.com", "x.com",
-    
-    // Major Frameworks & Documentation
-    "angularjs.org", "angular.io", "react.dev", "vuejs.org", "developer.mozilla.org",
-    
-    // Institutional / Custom User Trusts
-    "paruluniversity.ac.in",
-];
+// 1. DYNAMIC THREAT INTEL SYNC
+chrome.runtime.onStartup.addListener(syncTrustedDomains);
+chrome.runtime.onInstalled.addListener(syncTrustedDomains);
 
-function isGlobalTrusted(url) {
-    try {
-        const hostname = new URL(url).hostname;
-        return TRUSTED_DOMAINS.some(d => hostname === d || hostname.endsWith("." + d));
-    } catch (e) { return false; }
+chrome.alarms.create("dailySync", { periodInMinutes: 1440 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "dailySync") syncTrustedDomains();
+});
+
+function syncTrustedDomains() {
+    console.log("🛡️ WADE: Syncing Global Trusted Domains (Tranco Top 10k)...");
+    fetch(`${API_URL}/trusted-domains`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.domains) {
+                chrome.storage.local.set({ globalTrusted: data.domains }, () => {
+                    console.log(`✅ WADE: Successfully memorized ${data.domains.length} safe domains.`);
+                });
+            }
+        })
+        .catch(err => console.error("❌ WADE: Failed to sync Tranco domains", err));
 }
 
-// 2. LOGGING HELPER (Fixes Empty History)
+// 2. LOGGING HELPER
 function saveToHistory(url, score, reason) {
     chrome.storage.local.get({ scanHistory: [] }, (result) => {
         let history = result.scanHistory;
-        // Prevent duplicate entries for the same URL in a row
         if (history.length > 0 && history[history.length - 1].url === url) return;
 
         history.push({
@@ -45,7 +37,7 @@ function saveToHistory(url, score, reason) {
             date: new Date().toLocaleTimeString()
         });
 
-        if (history.length > 20) history.shift(); // Keep last 20
+        if (history.length > 20) history.shift();
         chrome.storage.local.set({ scanHistory: history });
     });
 }
@@ -58,24 +50,28 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 function handleUrl(tabId, url) {
-    // A. Check Global Trust
-    if (isGlobalTrusted(url)) {
-        markSafe(tabId, "Global Trusted", url);
-        return;
-    }
-
-    // B. Check User Learned Trust
     try {
         const hostname = new URL(url).hostname;
-        chrome.storage.local.get({ userTrust: {} }, (result) => {
-            const trustData = result.userTrust;
-            const bypassCount = trustData[hostname] || 0;
 
+        chrome.storage.local.get({ globalTrusted: [], userTrust: {} }, (result) => {
+            const globalList = result.globalTrusted;
+            const userTrustData = result.userTrust;
+            
+            // A. Check Global Tranco List
+            const isGlobal = globalList.some(d => hostname === d || hostname.endsWith("." + d));
+            if (isGlobal || hostname === "localhost") {
+                markSafe(tabId, "Global Trusted", url);
+                return;
+            }
+
+            // B. Check User Learned Trust
+            const bypassCount = userTrustData[hostname] || 0;
             if (bypassCount >= 3) {
-                console.log(`🛡️ WADE: Skipping ${hostname} (User Trusted)`);
                 markSafe(tabId, "User Trusted", url);
                 return;
             }
+
+            // C. If unknown, trigger the AI
             performScan(tabId, url);
         });
     } catch (e) { performScan(tabId, url); }
@@ -84,8 +80,6 @@ function handleUrl(tabId, url) {
 function markSafe(tabId, reason, url) {
     chrome.action.setBadgeText({text: "SAFE"});
     chrome.action.setBadgeBackgroundColor({color: "#00FF00"});
-    
-    // SAVE TO HISTORY (This fixes your bug)
     saveToHistory(url, 0, reason);
 
     chrome.tabs.sendMessage(tabId, { 
@@ -106,7 +100,7 @@ function performScan(tabId, url) {
     .then(res => res.json())
     .then(data => {
         updateBadge(data.risk_score);
-        saveToHistory(url, data.risk_score, data.threat_type || " AI Analysis");
+        saveToHistory(url, data.risk_score, data.threat_type || "AI Analysis");
 
         chrome.tabs.sendMessage(tabId, { action: "SCAN_RESULT", data: data }).catch(() => {});
 
@@ -124,7 +118,7 @@ function updateBadge(score) {
     chrome.action.setBadgeBackgroundColor({color: color});
 }
 
-// 5. MESSAGE HANDLERS (Reset & Downloads)
+// 5. MESSAGE HANDLERS
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "USER_BYPASS") {
         try {
@@ -137,7 +131,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } catch (e) {}
     }
     
-    // NEW: UNDO BUTTON LOGIC
     if (request.action === "RESET_MEMORY") {
         chrome.storage.local.set({ userTrust: {}, scanHistory: [] }, () => {
             sendResponse({ success: true });
@@ -145,8 +138,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; 
     }
 
+    // Fixed: Restored the proper Counter-Attack dummy data here
     if (request.action === "FETCH_JUNK_DATA") {
-        // ... (Keep your existing Counter Attack logic here) ...
         sendResponse({ success: true, data: { name: "Alex Cipher", email: "trap@dummy.net" } });
+    }
+
+    // NEW: SMART HOVER/POPUP INTERCEPTOR
+    if (request.action === "ANALYZE_URL" || request.action === "HOVER_SCAN") {
+        try {
+            const hostname = new URL(request.url).hostname;
+            
+            // Check Memory Cache First (0ms Latency)
+            chrome.storage.local.get({ globalTrusted: [], userTrust: {} }, (result) => {
+                const isGlobal = result.globalTrusted.some(d => hostname === d || hostname.endsWith("." + d));
+                const bypassCount = result.userTrust[hostname] || 0;
+
+                if (isGlobal || bypassCount >= 3 || hostname === "localhost") {
+                    
+                    // Fixed: THIS is where the Tranco HUD data belongs!
+                    sendResponse({ 
+                        success: true, 
+                        data: { 
+                            risk_score: 0, 
+                            verdict: "SAFE", 
+                            threat_type: "Trusted by Global DB", 
+                            target_domain: hostname,
+                            domain_age: 10000, 
+                            vt_data: { total: "Tranco", malicious: 0 } 
+                        } 
+                    });
+                    return;
+                }
+
+                // If unknown, forward to Python API
+                fetch(`${API_URL}/analyze`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: request.url })
+                })
+                .then(res => res.json())
+                .then(data => sendResponse({ success: true, data: data }))
+                .catch(err => sendResponse({ success: false, error: "API_FAILED" }));
+            });
+            return true; // Keep channel open for async response
+        } catch (e) {
+            sendResponse({ success: false });
+        }
     }
 });

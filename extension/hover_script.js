@@ -1,4 +1,4 @@
-// hover_script.js - WADE Heads-Up Display (Delegated Mode)
+// hover_script.js - WADE Heads-Up Display (Optimized for Cache)
 
 let hoverTimer = null;
 let currentHUD = null;
@@ -16,6 +16,8 @@ function formatAge(days) {
 function formatVT(vt) {
     if (!vt || !vt.total || vt.total === "Database" || vt.total === "N/A") return "📡 No Database Match";
     if (vt.malicious > 0) return `🦠 ${vt.malicious}/${vt.total} Vendors Flagged This`;
+    // Custom handling for Tranco Fast-Path
+    if (vt.total === "Tranco") return `✅ Clean (Global Top 10k)`;
     return `✅ Clean (${vt.total} Engines)`;
 }
 
@@ -24,13 +26,20 @@ document.addEventListener('mouseover', (e) => {
     const target = e.target.closest('a');
     if (target && target.href.startsWith('http') && target.href !== window.location.href) {
         clearTimeout(hoverTimer);
+        // Wait 800ms to ensure the user is actually reading the link
         hoverTimer = setTimeout(() => showHUD(target, target.href), 800);
     }
 });
 
-document.addEventListener('mouseout', () => {
-    clearTimeout(hoverTimer);
-    if (currentHUD) currentHUD.remove();
+document.addEventListener('mouseout', (e) => {
+    // Only clear if we actually moved off an anchor tag
+    if (e.target.closest('a')) {
+        clearTimeout(hoverTimer);
+        if (currentHUD) {
+            currentHUD.remove();
+            currentHUD = null;
+        }
+    }
 });
 
 // --- UI LOGIC ---
@@ -65,9 +74,12 @@ function showHUD(element, url) {
 
     // DELEGATE TO BACKGROUND SCRIPT
     chrome.runtime.sendMessage({ action: "ANALYZE_URL", url: url }, (response) => {
+        // Race Condition Fix: If user moved mouse away before API replied, abort.
+        if (currentHUD !== hud) return;
+
         if (!response || !response.success) {
-            hud.style.borderColor = '#ff003c';
-            hud.innerHTML = `<div style="color: #ff003c; font-weight: bold;">❌ SCAN FAILED</div>`;
+            // Silent fail is better for UX on hovers. If API is down, just vanish.
+            hud.remove();
             return;
         }
 
