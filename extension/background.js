@@ -3,9 +3,25 @@ const API_URL = "https://reaper1907-wade-engine.hf.space";
 
 // 1. GLOBAL ALLOWLIST
 const TRUSTED_DOMAINS = [
-    "google.com", "youtube.com", "github.com", "huggingface.co",
-    "microsoft.com", "paruluniversity.ac.in", "angularjs.org", "angular.io",
-    "uhdmovies.loan" // Example of a site you might trust
+"google.com", "google.co.in", "youtube.com", "gmail.com", "drive.google.com", "gstatic.com",
+    
+    // Developer & Cloud Platforms
+    "github.com", "stackoverflow.com", "huggingface.co", "gitlab.com", "aws.amazon.com",
+    
+    // Microsoft Ecosystem
+    "microsoft.com", "office.com", "bing.com", "live.com", "sharepoint.com",
+    
+    // Productivity & Design Tools
+    "canva.com", "canva.in", "notion.so", "figma.com", "slack.com", "trello.com",
+    
+    // Professional & Social Networking
+    "linkedin.com", "reddit.com", "twitter.com", "x.com",
+    
+    // Major Frameworks & Documentation
+    "angularjs.org", "angular.io", "react.dev", "vuejs.org", "developer.mozilla.org",
+    
+    // Institutional / Custom User Trusts
+    "paruluniversity.ac.in",
 ];
 
 function isGlobalTrusted(url) {
