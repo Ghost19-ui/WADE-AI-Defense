@@ -17,6 +17,10 @@ from pydantic import BaseModel
 import google.generativeai as genai
 from groq import Groq
 import uvicorn
+import time
+import requests
+import zipfile
+import io
 
 # --- CONFIG & LOGGING ---
 logging.basicConfig(level=logging.INFO)
@@ -257,5 +261,49 @@ async def analyze_url(request: ScanRequest, background_tasks: BackgroundTasks):
 async def read_root():
     return "<html><body><h1>WADE ONLINE v6.0</h1></body></html>"
 
+# --- DYNAMIC THREAT INTEL: TRANCO TOP 10K ---
+trusted_cache = {
+    "timestamp": 0,
+    "domains": []
+}
+
+@app.get("/trusted-domains")
+def get_trusted_domains():
+    global trusted_cache
+    current_time = time.time()
+    
+    # Update the list only once every 24 hours (86400 seconds)
+    if current_time - trusted_cache["timestamp"] > 86400 or not trusted_cache["domains"]:
+        try:
+            print("WADE: Downloading latest Tranco Top 10k list...")
+            url = "https://tranco-list.eu/top-1m.csv.zip"
+            resp = requests.get(url, timeout=10)
+            
+            # Unzip in memory and read the top 10,000 lines
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                csv_name = z.namelist()[0]
+                with z.open(csv_name) as f:
+                    domains = []
+                    for i, line in enumerate(f):
+                        if i >= 10000: break
+                        # Tranco format is "1,google.com"
+                        domain = line.decode('utf-8').strip().split(',')[1]
+                        domains.append(domain)
+            
+            # Keep your custom domains safe!
+            custom_safe = ["paruluniversity.ac.in", "uhdmovies.loan"]
+            trusted_cache["domains"] = list(set(domains + custom_safe))
+            trusted_cache["timestamp"] = current_time
+            print(f"WADE: Successfully cached {len(trusted_cache['domains'])} trusted domains.")
+            
+        except Exception as e:
+            print(f"Error fetching Tranco list: {e}")
+            # Failsafe if download fails
+            if not trusted_cache["domains"]:
+                trusted_cache["domains"] = ["google.com", "youtube.com", "github.com", "paruluniversity.ac.in", "uhdmovies.loan"]
+
+    return {"success": True, "domains": trusted_cache["domains"]}
+
+# --- SERVER START (MUST ALWAYS BE AT THE VERY BOTTOM) ---
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7860)
