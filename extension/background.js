@@ -1,4 +1,4 @@
-// background.js - WADE Intelligence Center (v7 - Dynamic Tranco Feed)
+// background.js - WADE Intelligence Center (v5.0 - Dynamic Tranco Feed)
 const API_URL = "https://reaper1907-wade-engine.hf.space"; 
 
 // 1. DYNAMIC THREAT INTEL SYNC
@@ -64,9 +64,9 @@ function handleUrl(tabId, url) {
                 return;
             }
 
-            // B. Check User Learned Trust
+            // B. Check User Learned Trust (Recalibrated to 2 for faster learning)
             const bypassCount = userTrustData[hostname] || 0;
-            if (bypassCount >= 3) {
+            if (bypassCount >= 2) {
                 markSafe(tabId, "User Trusted", url);
                 return;
             }
@@ -138,24 +138,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; 
     }
 
-    // Fixed: Restored the proper Counter-Attack dummy data here
     if (request.action === "FETCH_JUNK_DATA") {
         sendResponse({ success: true, data: { name: "Alex Cipher", email: "trap@dummy.net" } });
     }
 
-    // NEW: SMART HOVER/POPUP INTERCEPTOR
+    // SMART HOVER/POPUP INTERCEPTOR
     if (request.action === "ANALYZE_URL" || request.action === "HOVER_SCAN") {
         try {
             const hostname = new URL(request.url).hostname;
             
-            // Check Memory Cache First (0ms Latency)
             chrome.storage.local.get({ globalTrusted: [], userTrust: {} }, (result) => {
                 const isGlobal = result.globalTrusted.some(d => hostname === d || hostname.endsWith("." + d));
                 const bypassCount = result.userTrust[hostname] || 0;
 
-                if (isGlobal || bypassCount >= 3 || hostname === "localhost") {
-                    
-                    // Fixed: THIS is where the Tranco HUD data belongs!
+                // Recalibrated here as well
+                if (isGlobal || bypassCount >= 2 || hostname === "localhost") {
                     sendResponse({ 
                         success: true, 
                         data: { 
@@ -170,7 +167,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return;
                 }
 
-                // If unknown, forward to Python API
                 fetch(`${API_URL}/analyze`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ url: request.url })
@@ -179,7 +175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 .then(data => sendResponse({ success: true, data: data }))
                 .catch(err => sendResponse({ success: false, error: "API_FAILED" }));
             });
-            return true; // Keep channel open for async response
+            return true; 
         } catch (e) {
             sendResponse({ success: false });
         }

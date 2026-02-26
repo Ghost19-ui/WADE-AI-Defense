@@ -9,6 +9,10 @@ import whois
 import ssl
 import socket
 import sys
+import time
+import requests
+import zipfile
+import io
 from datetime import datetime
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -17,23 +21,19 @@ from pydantic import BaseModel
 import google.generativeai as genai
 from groq import Groq
 import uvicorn
-import time
-import requests
-import zipfile
-import io
 
 # --- CONFIG & LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("WadeEngine")
 
-app = FastAPI(title="Wade Engine Ultimate", version="6.0.0")
+app = FastAPI(title="WADE Engine Ultimate", version="5.0")
 
-# API KEYS
+# API KEYS (Fetched from Hugging Face Cloud Secrets)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 
-# TRUSTED DOMAINS (Whitelist)
+# TRUSTED DOMAINS (Whitelist Ages)
 TRUSTED_AGES = {
     "google.com": 9500, "youtube.com": 6900, "wikipedia.org": 8700, 
     "github.com": 5800, "microsoft.com": 11000, "huggingface.co": 1500,
@@ -41,7 +41,8 @@ TRUSTED_AGES = {
     "netflix.com": 9000, "linkedin.com": 7500, "whatsapp.com": 5000,
     "openai.com": 3000, "facebook.com": 7600, "instagram.com": 4500,
     "twitter.com": 6500, "x.com": 10000, "twitch.tv": 4000,
-    "gmail.com": 9500, "outlook.com": 8000, "yahoo.com": 10000
+    "gmail.com": 9500, "outlook.com": 8000, "yahoo.com": 10000,
+    "paruluniversity.ac.in": 5000, "uhdmovies.loan": 1000
 }
 
 app.add_middleware(
@@ -93,40 +94,30 @@ intel_db = ThreatIntel()
 async def startup_event():
     asyncio.create_task(intel_db.update_feeds())
 
-# --- ROBUST DOMAIN AGE (With Timeout Fix) ---
+# --- ROBUST DOMAIN AGE ---
 def get_domain_age(url):
     try:
         domain = url.split("//")[-1].split("/")[0].replace("www.", "").split(":")[0]
         
-        # 1. Check Whitelist (Fastest)
         if domain in TRUSTED_AGES:
             return TRUSTED_AGES[domain]
 
-        # 2. Try WHOIS with Timeout
-        # FIX: Added specific timeout to prevent hanging
         socket.setdefaulttimeout(2.0) 
-        
         try:
             w = whois.whois(domain)
             creation_date = w.creation_date
-            
-            if isinstance(creation_date, list): 
-                creation_date = creation_date[0]
+            if isinstance(creation_date, list): creation_date = creation_date[0]
             
             if creation_date:
                 if isinstance(creation_date, str):
-                    # Try parsing common string formats
                     try: creation_date = datetime.strptime(creation_date, "%Y-%m-%d %H:%M:%S")
                     except: 
                         try: creation_date = datetime.strptime(creation_date, "%Y-%m-%dT%H:%M:%S")
                         except: pass
-                
                 if isinstance(creation_date, datetime):
                     return (datetime.now() - creation_date).days
-        except:
-            pass 
+        except: pass 
 
-        # 3. Fallback: SSL Certificate Date
         try:
             ctx = ssl.create_default_context()
             with socket.create_connection((domain, 443), timeout=2.0) as sock:
@@ -135,13 +126,10 @@ def get_domain_age(url):
                     start_date_str = cert['notBefore']
                     start_date = datetime.strptime(start_date_str, "%b %d %H:%M:%S %Y %Z")
                     return (datetime.now() - start_date).days
-        except:
-            pass
+        except: pass
             
-    except Exception:
-        pass 
-        
-    return -1 # Truly Unknown
+    except Exception: pass 
+    return -1 
 
 async def check_virustotal(url: str):
     if not VIRUSTOTAL_API_KEY: return {"malicious": 0, "total": "No API Key"}
@@ -168,6 +156,7 @@ def log_scan(url: str, result: dict):
             )
     except: pass
 
+# --- RECALIBRATED AI SCANNER ---
 class HybridScanner:
     def __init__(self):
         self.groq = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
@@ -176,13 +165,13 @@ class HybridScanner:
     async def scan(self, url, vt_data, domain_age):
         vt_score = vt_data.get('malicious', 0) if isinstance(vt_data.get('malicious'), int) else 0
         
-        # PROMPT ENGINEERING: Added "Strict JSON" instruction to fix parsing errors
         context = f"Domain Age: {domain_age} days (If -1, unknown). VirusTotal Flags: {vt_score}."
         
         system_prompt = (
             f"You are WADE Security AI. Analyze URL: '{url}'. Context: {context}.\n"
-            "Evaluate phishing risk. If VirusTotal > 0 or Age < 30 days, high risk.\n"
-            "Return ONLY JSON: {'risk_score': int (0-100), 'verdict': 'SAFE'|'MALICIOUS', "
+            "BE OBJECTIVE, NOT PARANOID. If VirusTotal is 0 and the site is > 30 days old, default to SAFE.\n"
+            "Only flag as MALICIOUS if the URL shows clear phishing patterns (brand typos, deceptive paths).\n"
+            "Return ONLY strict JSON: {'risk_score': int (0-100), 'verdict': 'SAFE'|'MALICIOUS', "
             "'threat_type': str, 'harm': str, 'effect': str}"
         )
 
@@ -204,54 +193,43 @@ class HybridScanner:
                 return json.loads(clean_json)
             except: pass
 
-        # Fallback if AI fails
         return {"risk_score": 0, "verdict": "SAFE", "threat_type": "None", "harm": "None", "effect": "None"}
 
 scanner = HybridScanner()
-
-class ScanRequest(BaseModel):
-    url: str
+class ScanRequest(BaseModel): url: str
 
 @app.post("/analyze")
 async def analyze_url(request: ScanRequest, background_tasks: BackgroundTasks):
     url = request.url
     domain = url.split("//")[-1].split("/")[0].replace("www.", "")
 
-    # 1. WHITELIST CHECK
     if domain in TRUSTED_AGES:
         return {
             "risk_score": 0, "verdict": "SAFE", "threat_type": "Official Trusted Domain",
-            "harm": "None", "effect": "None",
-            "domain_age": TRUSTED_AGES[domain],
+            "harm": "None", "effect": "None", "domain_age": TRUSTED_AGES[domain],
             "vt_data": {"malicious": 0, "total": 95}
         }
 
-    # 2. THREAT INTEL CHECK (Blacklists)
     if url in intel_db.malicious_urls:
         return {
             "risk_score": 100, "verdict": "MALICIOUS", "threat_type": "Confirmed Phishing (GitHub Feed)",
-            "harm": "In Global Blacklist", "effect": "Credential Theft",
-            "domain_age": -1, "vt_data": {"malicious": "High", "total": "OSINT"}
+            "harm": "In Global Blacklist", "effect": "Credential Theft", "domain_age": -1, 
+            "vt_data": {"malicious": "High", "total": "OSINT"}
         }
 
-    # 3. DEEP CLOUD SCAN
     age = get_domain_age(url)
     vt_data = await check_virustotal(url)
-    
-    # 4. AI SCAN
     result = await scanner.scan(url, vt_data, age)
     
-    # 5. OVERRIDE RULES (The "Brutal" Logic)
-    # If VirusTotal says it's bad, it IS bad, regardless of what AI says.
-    if isinstance(vt_data.get('malicious'), int) and vt_data.get('malicious') > 2:
+    # RECALIBRATED OVERRIDE RULES
+    if isinstance(vt_data.get('malicious'), int) and vt_data.get('malicious') > 3:
         result['risk_score'] = max(result['risk_score'], 90)
         result['verdict'] = "MALICIOUS"
         result['threat_type'] = "Security Vendor Flagged"
 
-    # If domain is extremely new (< 7 days), flag it as suspicious
-    if age != -1 and age < 7 and result['risk_score'] < 50:
-        result['risk_score'] = 60
-        result['threat_type'] = "Newly Registered Domain"
+    if age != -1 and age < 3 and result['risk_score'] < 40:
+        result['risk_score'] = 50
+        result['threat_type'] = "Very Newly Registered Domain"
 
     final_result = {**result, "domain_age": age, "vt_data": vt_data}
     background_tasks.add_task(log_scan, url, final_result)
@@ -267,6 +245,7 @@ async def read_root():
         </body>
     </html>
     """
+
 # --- DYNAMIC THREAT INTEL: TRANCO TOP 10K ---
 trusted_cache = {
     "timestamp": 0,
@@ -278,25 +257,21 @@ def get_trusted_domains():
     global trusted_cache
     current_time = time.time()
     
-    # Update the list only once every 24 hours (86400 seconds)
     if current_time - trusted_cache["timestamp"] > 86400 or not trusted_cache["domains"]:
         try:
             print("WADE: Downloading latest Tranco Top 10k list...")
             url = "https://tranco-list.eu/top-1m.csv.zip"
             resp = requests.get(url, timeout=10)
             
-            # Unzip in memory and read the top 10,000 lines
             with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
                 csv_name = z.namelist()[0]
                 with z.open(csv_name) as f:
                     domains = []
                     for i, line in enumerate(f):
                         if i >= 10000: break
-                        # Tranco format is "1,google.com"
                         domain = line.decode('utf-8').strip().split(',')[1]
                         domains.append(domain)
             
-            # Keep your custom domains safe!
             custom_safe = ["paruluniversity.ac.in", "uhdmovies.loan"]
             trusted_cache["domains"] = list(set(domains + custom_safe))
             trusted_cache["timestamp"] = current_time
@@ -304,12 +279,10 @@ def get_trusted_domains():
             
         except Exception as e:
             print(f"Error fetching Tranco list: {e}")
-            # Failsafe if download fails
             if not trusted_cache["domains"]:
                 trusted_cache["domains"] = ["google.com", "youtube.com", "github.com", "paruluniversity.ac.in", "uhdmovies.loan"]
 
     return {"success": True, "domains": trusted_cache["domains"]}
 
-# --- SERVER START (MUST ALWAYS BE AT THE VERY BOTTOM) ---
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7860)
