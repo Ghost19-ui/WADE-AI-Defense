@@ -53,10 +53,26 @@ function handleUrl(tabId, url) {
     try {
         const hostname = new URL(url).hostname;
 
-        chrome.storage.local.get({ globalTrusted: [], userTrust: {} }, (result) => {
+        // FETCH BLACKLIST DATA TOO
+        chrome.storage.local.get({ globalTrusted: [], userTrust: {}, userBlacklist: [] }, (result) => {
             const globalList = result.globalTrusted;
             const userTrustData = result.userTrust;
+            const blacklistData = result.userBlacklist;
             
+            // --- NEW RULE 1: Check Custom Blacklist FIRST ---
+            if (blacklistData.includes(hostname)) {
+                chrome.action.setBadgeText({text: "BLK"});
+                chrome.action.setBadgeBackgroundColor({color: "#ff003c"});
+                saveToHistory(url, 100, "User Custom Blacklist");
+                
+                // Block the page immediately
+                chrome.tabs.sendMessage(tabId, { 
+                    action: "BLOCK_PAGE", 
+                    data: { risk_score: 100, threat_type: "User Custom Blacklist", target_domain: hostname } 
+                }).catch(() => {});
+                return;
+            }
+
             // A. Check Global Tranco List
             const isGlobal = globalList.some(d => hostname === d || hostname.endsWith("." + d));
             if (isGlobal || hostname === "localhost") {
@@ -147,18 +163,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
             const hostname = new URL(request.url).hostname;
             
-            chrome.storage.local.get({ globalTrusted: [], userTrust: {} }, (result) => {
+            // FETCH BLACKLIST HERE TOO
+            chrome.storage.local.get({ globalTrusted: [], userTrust: {}, userBlacklist: [] }, (result) => {
                 const isGlobal = result.globalTrusted.some(d => hostname === d || hostname.endsWith("." + d));
                 const bypassCount = result.userTrust[hostname] || 0;
+                const blacklistData = result.userBlacklist;
 
-                // Recalibrated here as well
+                // --- NEW RULE 2: Instantly fail Hover/Popup if blacklisted ---
+                if (blacklistData.includes(hostname)) {
+                    sendResponse({ 
+                        success: true, 
+                        data: { 
+                            risk_score: 100, 
+                            verdict: "MALICIOUS", 
+                            threat_type: "User Custom Blacklist", 
+                            target_domain: hostname,
+                            domain_age: 0, 
+                            vt_data: { total: "Local", malicious: "High" } 
+                        } 
+                    });
+                    return;
+                }
+
                 if (isGlobal || bypassCount >= 2 || hostname === "localhost") {
                     sendResponse({ 
                         success: true, 
                         data: { 
                             risk_score: 0, 
                             verdict: "SAFE", 
-                            threat_type: "Trusted by Global DB", 
+                            threat_type: "Trusted by Global DB / User", 
                             target_domain: hostname,
                             domain_age: 10000, 
                             vt_data: { total: "Tranco", malicious: 0 } 

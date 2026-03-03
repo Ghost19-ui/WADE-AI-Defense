@@ -17,7 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('history-list').innerHTML = "<div style='text-align:center; color:#555;'>Logs cleared.</div>";
     });
 
-    // 5. RESET MEMORY BUTTON (The Undo Logic)
+    // 5. OPEN DASHBOARD BUTTON (Added!)
+    document.getElementById('open-dashboard').addEventListener('click', () => {
+        chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
+    });
+
+    // 6. RESET MEMORY BUTTON (The Undo Logic)
     document.getElementById('btn-reset').addEventListener('click', () => {
         // Send command to Background.js to wipe the "User Trust" database
         chrome.runtime.sendMessage({ action: "RESET_MEMORY" }, (response) => {
@@ -56,7 +61,10 @@ function requestScan() {
         if (tabs[0]?.url) {
             document.getElementById('domain-name').innerText = new URL(tabs[0].url).hostname;
             chrome.runtime.sendMessage({ action: "ANALYZE_URL", url: tabs[0].url }, (response) => {
-                if (response && response.success) updateDashboard(response.data);
+                // Ignore the response here if we're relying on the background script to send SCAN_RESULT
+                if (response && response.success && response.data) {
+                     updateDashboard(response.data);
+                }
             });
         }
     });
@@ -90,10 +98,15 @@ function updateDashboard(data) {
     }
 
     // Details
-    document.getElementById('domain-name').innerText = data.target_domain || "Unknown";
+   if (data.target_domain) {
+    document.getElementById('domain-name').innerText = data.target_domain;
+}
     document.getElementById('domain-name').style.color = color;
     document.getElementById('domain-age').innerText = data.domain_age || "--";
-    document.getElementById('vt-data').innerText = data.vt_verdict || "--";
+    
+    // Fallback if vt_verdict isn't explicitly passed, use the total to show it scanned
+    const vtDisplay = data.vt_verdict || (data.vt_data ? `Vendors Flagged: ${data.vt_data.malicious}` : "--");
+    document.getElementById('vt-data').innerText = vtDisplay;
 }
 
 function loadHistory() {

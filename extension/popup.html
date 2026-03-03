@@ -4,7 +4,6 @@
     <meta charset="UTF-8"> 
     <link rel="stylesheet" href="popup.css">
     <style>
-        /* Keeping your existing styles */
         body { width: 350px; background: #050505; color: white; font-family: 'Courier New', monospace; margin: 0; overflow-x: hidden; }
         
         .tabs { display: flex; border-bottom: 1px solid #333; background: #111; }
@@ -35,6 +34,10 @@
         /* BUTTONS */
         button { background: #00f3ff; color: #000; border: none; padding: 10px; width: 100%; font-weight: bold; cursor: pointer; margin-top: 15px; border-radius: 4px; }
         button:hover { background: #fff; }
+
+        /* DASHBOARD BUTTON STYLE */
+        .btn-dash { background: transparent; color: #00f3ff; border: 1px solid #00f3ff; margin-top: 10px; }
+        .btn-dash:hover { background: rgba(0, 243, 255, 0.1); color: #fff; }
 
         /* DANGER / RESET BUTTON STYLE */
         .btn-danger { background: #222; color: #ff003c; border: 1px solid #ff003c; margin-top: 20px; }
@@ -76,6 +79,7 @@
         </div>
 
         <button id="scan-btn">🔄 RE-SCAN TAB</button>
+        <button id="open-dashboard" class="btn-dash">📊 OPEN COMMAND CENTER</button>
     </div>
 
     <div id="view-history" class="view">
