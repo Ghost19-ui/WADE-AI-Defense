@@ -4,6 +4,7 @@
   "version": "5.0",
   "description": "Real-time AI cybersecurity protection for browsers.",
   "permissions": [
+    "webNavigation", 
     "storage",
     "activeTab",
     "scripting",
@@ -22,7 +23,8 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js", "hover_script.js"],
-      "css": ["content.css"]
+      "css": ["content.css"],
+      "run_at": "document_idle"
     }
   ],
   "action": {

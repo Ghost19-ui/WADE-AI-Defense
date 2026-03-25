@@ -99,6 +99,22 @@
     text-shadow: 0 0 5px rgba(255,255,255,0.2);
 }
 
+/* --- content.css --- */
+.wade-blocked-link {
+    background-color: #ff4c4c !important;
+    color: #ffffff !important;
+    font-weight: bold !important;
+    text-decoration: line-through !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.wade-xss-warning {
+    outline: 2px dashed #ff4c4c !important;
+}
+
 /* Loading Spinner */
 .wade-spinner {
     width: 10px;

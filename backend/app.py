@@ -42,7 +42,7 @@ TRUSTED_AGES = {
     "openai.com": 3000, "facebook.com": 7600, "instagram.com": 4500,
     "twitter.com": 6500, "x.com": 10000, "twitch.tv": 4000,
     "gmail.com": 9500, "outlook.com": 8000, "yahoo.com": 10000,
-    "paruluniversity.ac.in": 5000, "uhdmovies.loan": 1000
+    "paruluniversity.ac.in": 5000
 }
 
 app.add_middleware(
@@ -272,7 +272,7 @@ def get_trusted_domains():
                         domain = line.decode('utf-8').strip().split(',')[1]
                         domains.append(domain)
             
-            custom_safe = ["paruluniversity.ac.in", "uhdmovies.loan"]
+            custom_safe = ["paruluniversity.ac.in"]
             trusted_cache["domains"] = list(set(domains + custom_safe))
             trusted_cache["timestamp"] = current_time
             print(f"WADE: Successfully cached {len(trusted_cache['domains'])} trusted domains.")
@@ -280,7 +280,8 @@ def get_trusted_domains():
         except Exception as e:
             print(f"Error fetching Tranco list: {e}")
             if not trusted_cache["domains"]:
-                trusted_cache["domains"] = ["google.com", "youtube.com", "github.com", "paruluniversity.ac.in", "uhdmovies.loan"]
+                # Ensure the fallback array is also completely clean
+                trusted_cache["domains"] = ["google.com", "youtube.com", "github.com", "paruluniversity.ac.in"]
 
     return {"success": True, "domains": trusted_cache["domains"]}
 

@@ -1,7 +1,9 @@
-// background.js - WADE Intelligence Center (v5.0 - Dynamic Tranco Feed)
+// --- background.js ---
 const API_URL = "https://reaper1907-wade-engine.hf.space"; 
 
+// ==========================================
 // 1. DYNAMIC THREAT INTEL SYNC
+// ==========================================
 chrome.runtime.onStartup.addListener(syncTrustedDomains);
 chrome.runtime.onInstalled.addListener(syncTrustedDomains);
 
@@ -24,7 +26,9 @@ function syncTrustedDomains() {
         .catch(err => console.error("❌ WADE: Failed to sync Tranco domains", err));
 }
 
-// 2. LOGGING HELPER
+// ==========================================
+// 2. LOGGING HELPER & UI UPDATES
+// ==========================================
 function saveToHistory(url, score, reason) {
     chrome.storage.local.get({ scanHistory: [] }, (result) => {
         let history = result.scanHistory;
@@ -42,55 +46,10 @@ function saveToHistory(url, score, reason) {
     });
 }
 
-// 3. ROUTING LOGIC
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.url && tab.url.startsWith('http')) {
-        handleUrl(tabId, tab.url);
-    }
-});
-
-function handleUrl(tabId, url) {
-    try {
-        const hostname = new URL(url).hostname;
-
-        // FETCH BLACKLIST DATA TOO
-        chrome.storage.local.get({ globalTrusted: [], userTrust: {}, userBlacklist: [] }, (result) => {
-            const globalList = result.globalTrusted;
-            const userTrustData = result.userTrust;
-            const blacklistData = result.userBlacklist;
-            
-            // --- NEW RULE 1: Check Custom Blacklist FIRST ---
-            if (blacklistData.includes(hostname)) {
-                chrome.action.setBadgeText({text: "BLK"});
-                chrome.action.setBadgeBackgroundColor({color: "#ff003c"});
-                saveToHistory(url, 100, "User Custom Blacklist");
-                
-                // Block the page immediately
-                chrome.tabs.sendMessage(tabId, { 
-                    action: "BLOCK_PAGE", 
-                    data: { risk_score: 100, threat_type: "User Custom Blacklist", target_domain: hostname } 
-                }).catch(() => {});
-                return;
-            }
-
-            // A. Check Global Tranco List
-            const isGlobal = globalList.some(d => hostname === d || hostname.endsWith("." + d));
-            if (isGlobal || hostname === "localhost") {
-                markSafe(tabId, "Global Trusted", url);
-                return;
-            }
-
-            // B. Check User Learned Trust (Recalibrated to 2 for faster learning)
-            const bypassCount = userTrustData[hostname] || 0;
-            if (bypassCount >= 2) {
-                markSafe(tabId, "User Trusted", url);
-                return;
-            }
-
-            // C. If unknown, trigger the AI
-            performScan(tabId, url);
-        });
-    } catch (e) { performScan(tabId, url); }
+function updateBadge(score) {
+    chrome.action.setBadgeText({text: score.toString()});
+    let color = score > 75 ? "#FF0000" : (score > 30 ? "#FFA500" : "#00FF00");
+    chrome.action.setBadgeBackgroundColor({color: color});
 }
 
 function markSafe(tabId, reason, url) {
@@ -104,7 +63,66 @@ function markSafe(tabId, reason, url) {
     }).catch(() => {});
 }
 
-// 4. AI SCANNING
+// ==========================================
+// 3. SYSTEM BOUNDARY FILTER
+// ==========================================
+function isUrlInScope(url) {
+    const outOfScopeProtocols = [
+        "file://", "chrome://", "chrome-extension://", "mailto:", "javascript:"
+    ];
+    for (let protocol of outOfScopeProtocols) {
+        if (url.toLowerCase().startsWith(protocol)) return false; 
+    }
+    return true; 
+}
+
+// ==========================================
+// 4. NETWORK INTERCEPTOR (Routing Logic)
+// ==========================================
+chrome.webNavigation.onBeforeNavigate.addListener(function(details) {
+    if (details.frameId !== 0) return; // Only scan main frame, not iframes
+    if (!isUrlInScope(details.url)) return; 
+    
+    handleUrl(details.tabId, details.url);
+});
+
+function handleUrl(tabId, url) {
+    try {
+        const hostname = new URL(url).hostname;
+
+        chrome.storage.local.get({ globalTrusted: [], userTrust: {}, userBlacklist: [] }, (result) => {
+            const isBlacklisted = result.userBlacklist.some(d => hostname === d || hostname.endsWith("." + d));
+            
+            // A. Check Custom Blacklist FIRST (Wildcard Override)
+            if (isBlacklisted) {
+                chrome.action.setBadgeText({text: "BLK"});
+                chrome.action.setBadgeBackgroundColor({color: "#ff003c"});
+                saveToHistory(url, 100, "Admin Force Blacklist");
+                
+                chrome.tabs.update(tabId, { url: chrome.runtime.getURL("block.html") });
+                return;
+            }
+
+            // B. Check Global Tranco List
+            const isGlobal = result.globalTrusted.some(d => hostname === d || hostname.endsWith("." + d));
+            if (isGlobal || hostname === "localhost") {
+                markSafe(tabId, "Global Trusted", url);
+                return;
+            }
+
+            // C. Check User Learned Trust
+            const bypassCount = result.userTrust[hostname] || 0;
+            if (bypassCount >= 2) {
+                markSafe(tabId, "User Trusted", url);
+                return;
+            }
+
+            // D. If unknown, trigger the AI API Scan
+            performScan(tabId, url);
+        });
+    } catch (e) { performScan(tabId, url); }
+}
+
 function performScan(tabId, url) {
     chrome.action.setBadgeText({text: "..."});
     chrome.action.setBadgeBackgroundColor({color: "#888"});
@@ -117,25 +135,35 @@ function performScan(tabId, url) {
     .then(data => {
         updateBadge(data.risk_score);
         saveToHistory(url, data.risk_score, data.threat_type || "AI Analysis");
-
         chrome.tabs.sendMessage(tabId, { action: "SCAN_RESULT", data: data }).catch(() => {});
 
         if (data.risk_score > 75) {
-            chrome.tabs.sendMessage(tabId, { action: "BLOCK_PAGE", data: data }).catch(() => {});
-            setTimeout(() => chrome.tabs.sendMessage(tabId, { action: "BLOCK_PAGE", data: data }).catch(() => {}), 1500);
+            chrome.tabs.update(tabId, { url: chrome.runtime.getURL("block.html") });
         }
     })
     .catch(() => chrome.action.setBadgeText({text: "ERR"}));
 }
 
-function updateBadge(score) {
-    chrome.action.setBadgeText({text: score.toString()});
-    let color = score > 75 ? "#FF0000" : (score > 30 ? "#FFA500" : "#00FF00");
-    chrome.action.setBadgeBackgroundColor({color: color});
-}
+// ==========================================
+// 5. DOWNLOAD WARNING
+// ==========================================
+chrome.downloads.onCreated.addListener(function(downloadItem) {
+    if (downloadItem.filename.endsWith(".exe") || downloadItem.filename.endsWith(".zip") || downloadItem.filename.endsWith(".docm")) {
+        chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icons/icon.png", 
+            title: "WADE Security Notice",
+            message: "File download detected. WADE does not scan local files. Do not enable macros!"
+        });
+    }
+});
 
-// 5. MESSAGE HANDLERS
+// ==========================================
+// 6. MESSAGE HANDLERS (Popups & Content Scripts)
+// ==========================================
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    
+    // Handle User Bypass Trust
     if (request.action === "USER_BYPASS") {
         try {
             const hostname = new URL(request.url).hostname;
@@ -147,6 +175,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } catch (e) {}
     }
     
+    // Handle Memory Reset
     if (request.action === "RESET_MEMORY") {
         chrome.storage.local.set({ userTrust: {}, scanHistory: [] }, () => {
             sendResponse({ success: true });
@@ -154,61 +183,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; 
     }
 
-    if (request.action === "FETCH_JUNK_DATA") {
-        sendResponse({ success: true, data: { name: "Alex Cipher", email: "trap@dummy.net" } });
-    }
-
-    // SMART HOVER/POPUP INTERCEPTOR
-    if (request.action === "ANALYZE_URL" || request.action === "HOVER_SCAN") {
+    // Handle DOM Link Scanning (From hover_script.js / Webmail)
+    if (request.action === "scan_link_heuristic" || request.action === "ANALYZE_URL" || request.action === "HOVER_SCAN") {
         try {
             const hostname = new URL(request.url).hostname;
             
-            // FETCH BLACKLIST HERE TOO
             chrome.storage.local.get({ globalTrusted: [], userTrust: {}, userBlacklist: [] }, (result) => {
+                // Check if blacklisted
+                const isBlacklisted = result.userBlacklist.some(d => hostname === d || hostname.endsWith("." + d));
+                if (isBlacklisted) {
+                    sendResponse({ 
+                        success: true, risk_score: 100, 
+                        data: { risk_score: 100, verdict: "MALICIOUS", threat_type: "Admin Force Blacklist" } 
+                    });
+                    return;
+                }
+
+                // Check if trusted
                 const isGlobal = result.globalTrusted.some(d => hostname === d || hostname.endsWith("." + d));
                 const bypassCount = result.userTrust[hostname] || 0;
-                const blacklistData = result.userBlacklist;
-
-                // --- NEW RULE 2: Instantly fail Hover/Popup if blacklisted ---
-                if (blacklistData.includes(hostname)) {
-                    sendResponse({ 
-                        success: true, 
-                        data: { 
-                            risk_score: 100, 
-                            verdict: "MALICIOUS", 
-                            threat_type: "User Custom Blacklist", 
-                            target_domain: hostname,
-                            domain_age: 0, 
-                            vt_data: { total: "Local", malicious: "High" } 
-                        } 
-                    });
-                    return;
-                }
-
                 if (isGlobal || bypassCount >= 2 || hostname === "localhost") {
                     sendResponse({ 
-                        success: true, 
-                        data: { 
-                            risk_score: 0, 
-                            verdict: "SAFE", 
-                            threat_type: "Trusted by Global DB / User", 
-                            target_domain: hostname,
-                            domain_age: 10000, 
-                            vt_data: { total: "Tranco", malicious: 0 } 
-                        } 
+                        success: true, risk_score: 0, 
+                        data: { risk_score: 0, verdict: "SAFE", threat_type: "Trusted Database" } 
                     });
                     return;
                 }
 
+                // Fallback to API
                 fetch(`${API_URL}/analyze`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ url: request.url })
                 })
                 .then(res => res.json())
-                .then(data => sendResponse({ success: true, data: data }))
+                .then(data => {
+                    sendResponse({ success: true, risk_score: data.risk_score, data: data });
+                })
                 .catch(err => sendResponse({ success: false, error: "API_FAILED" }));
             });
-            return true; 
+            return true; // Keeps the message channel open for the async fetch
         } catch (e) {
             sendResponse({ success: false });
         }

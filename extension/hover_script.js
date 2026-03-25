@@ -3,6 +3,43 @@
 let hoverTimer = null;
 let currentHUD = null;
 
+console.log("[WADE] Link Hover & Webmail Scanner Active.");
+
+function scanPageLinks() {
+    // Grab all standard hyperlinks on the page
+    const links = document.querySelectorAll('a[href^="http"]');
+    
+    links.forEach(link => {
+        // Skip links we have already scanned to save processing power
+        if (link.hasAttribute('data-wade-scanned')) return;
+        link.setAttribute('data-wade-scanned', 'true');
+
+        // Send the URL to background.js for AI/OSINT evaluation
+        chrome.runtime.sendMessage({ action: "scan_link_heuristic", url: link.href }, (response) => {
+            
+            // If the backend AI scores this higher than 75, block it visually
+            if (response && response.risk_score > 75) {
+                link.classList.add('wade-blocked-link');
+                link.innerText = `[🚨 WADE BLOCKED: PHISHING] ${link.innerText}`;
+                
+                // Physically prevent the click event
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    alert("WADE IPS: Connection to this hostile domain has been severed.");
+                }, true);
+            }
+        });
+    });
+}
+
+// Run initial link scan
+scanPageLinks();
+
+// Watch for new emails/links appearing in Single Page Apps like Gmail
+const linkObserver = new MutationObserver(() => scanPageLinks());
+linkObserver.observe(document.body, { childList: true, subtree: true });
+
 // --- HELPERS ---
 function formatAge(days) {
     if (days === "Hidden" || days === -1 || !days) return "❓ Age Unknown";
@@ -16,8 +53,10 @@ function formatAge(days) {
 function formatVT(vt) {
     if (!vt || !vt.total || vt.total === "Database" || vt.total === "N/A") return "📡 No Database Match";
     if (vt.malicious > 0) return `🦠 ${vt.malicious}/${vt.total} Vendors Flagged This`;
-    // Custom handling for Tranco Fast-Path
-    if (vt.total === "Tranco") return `✅ Clean (Global Top 10k)`;
+    
+    // FIX 3: Custom handling for Tranco/Local Fast-Path strings
+    if (vt.total === "Tranco" || vt.total === "Local") return `✅ Clean (${vt.total} Database)`;
+    
     return `✅ Clean (${vt.total} Engines)`;
 }
 
@@ -31,14 +70,12 @@ document.addEventListener('mouseover', (e) => {
     }
 });
 
+// FIX 2: Kill HUD anytime the mouse leaves, preventing ghost tooltips
 document.addEventListener('mouseout', (e) => {
-    // Only clear if we actually moved off an anchor tag
-    if (e.target.closest('a')) {
-        clearTimeout(hoverTimer);
-        if (currentHUD) {
-            currentHUD.remove();
-            currentHUD = null;
-        }
+    clearTimeout(hoverTimer);
+    if (currentHUD) {
+        currentHUD.remove();
+        currentHUD = null;
     }
 });
 

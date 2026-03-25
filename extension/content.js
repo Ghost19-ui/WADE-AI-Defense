@@ -7,6 +7,38 @@ const observer = new MutationObserver(() => {
     }
 });
 
+console.log("[WADE] Core Content Scanner Active.");
+
+function neutralizeInlineScripts() {
+    // Find elements that try to run JavaScript directly on click or hover
+    const riskyElements = document.querySelectorAll('[onclick], [onmouseover], a[href^="javascript:"]');
+    
+    let neutralizedCount = 0;
+
+    riskyElements.forEach(el => {
+        el.classList.add('wade-xss-warning'); 
+        
+        // Neutralize the malicious href trigger
+        if (el.hasAttribute('href') && el.getAttribute('href').toLowerCase().startsWith('javascript:')) {
+            el.setAttribute('data-wade-blocked-href', el.getAttribute('href'));
+            el.setAttribute('href', '#'); // Kill the link
+            el.title = "WADE Alert: Malicious inline script neutralized.";
+            neutralizedCount++;
+        }
+    });
+    
+    if (neutralizedCount > 0) {
+        console.warn(`[WADE] Neutralized ${neutralizedCount} inline scripts on this page.`);
+    }
+}
+
+// Run the scan when the script loads
+neutralizeInlineScripts();
+
+// Watch the DOM for any new scripts loaded dynamically
+const domObserver = new MutationObserver(() => neutralizeInlineScripts());
+domObserver.observe(document.body, { childList: true, subtree: true });
+
 // 1. LISTEN FOR BLOCK COMMANDS
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "BLOCK_PAGE") {
@@ -48,6 +80,10 @@ function showBlockScreen(data) {
             </div>
         </div>
     `;
+    
+    // FIX 1: Disconnect the observer so our own Block UI doesn't trigger an XSS scan and loop
+    domObserver.disconnect();
+
     document.body.appendChild(div);
     document.body.style.overflow = 'hidden';
 
@@ -65,6 +101,9 @@ function showBlockScreen(data) {
 
         // B. Tell Background to learn this preference
         chrome.runtime.sendMessage({ action: "USER_BYPASS", url: window.location.href });
+        
+        // C. Re-engage the DOM Observer to continue protecting the page after bypass
+        domObserver.observe(document.body, { childList: true, subtree: true });
     };
 
     // 3. Counter Attack
@@ -88,7 +127,7 @@ function startCounterAttack() {
             consoleDiv.innerHTML += `> NAME: ${junk.name}<br>`;
             consoleDiv.innerHTML += `> EMAIL: ${junk.email}<br>`;
             consoleDiv.innerHTML += `> PASS: ************<br>`;
-            consoleDiv.innerHTML += `> CARD: ${junk.credit_card}<br>`;
+            consoleDiv.innerHTML += `> CARD: ${junk.credit_card || "XXXX-XXXX-XXXX-XXXX"}<br>`;
             consoleDiv.innerHTML += `> --------------------------------<br>`;
             consoleDiv.innerHTML += `> PAYLOAD INJECTED. 🚀<br>`;
             btn.style.background = "green";
