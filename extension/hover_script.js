@@ -80,6 +80,7 @@ document.addEventListener('mouseout', (e) => {
 });
 
 // --- UI LOGIC ---
+// --- UI LOGIC ---
 function showHUD(element, url) {
     if (currentHUD) currentHUD.remove();
     const hud = document.createElement('div');
@@ -101,7 +102,7 @@ function showHUD(element, url) {
     hud.innerHTML = `
         <div style="display: flex; align-items: center; gap: 10px;">
             <div style="width: 10px; height: 10px; border-radius: 50%; background: #00f3ff; box-shadow: 0 0 10px #00f3ff; animation: pulse 1s infinite;"></div>
-            <span>SCANNING TARGET...</span>
+            <span id="wade-hud-status">SCANNING TARGET...</span>
         </div>
         <style>@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }</style>
     `;
@@ -109,14 +110,47 @@ function showHUD(element, url) {
     document.body.appendChild(hud);
     requestAnimationFrame(() => hud.style.opacity = '1');
 
+    // --- NEW: CLOUD STATUS MONITORS ---
+    let isResponded = false;
+    
+    // If it takes more than 2 seconds, the Cloud is likely waking up
+    const wakeTimer = setTimeout(() => {
+        if (!isResponded && currentHUD === hud) {
+            const statusSpan = hud.querySelector('#wade-hud-status');
+            if (statusSpan) {
+                statusSpan.innerText = "WAKING CLOUD AI...";
+                statusSpan.style.color = "#ffa500";
+            }
+        }
+    }, 2500);
+
+    // If it takes more than 12 seconds, kill the scan to prevent infinite loops
+    const killTimer = setTimeout(() => {
+        if (!isResponded && currentHUD === hud) {
+            hud.innerHTML = `<div style="color:#ff4c4c; font-weight:bold;">⚠️ CLOUD API TIMEOUT</div>`;
+            setTimeout(() => { if (currentHUD === hud) hud.remove(); }, 2000);
+        }
+    }, 12000);
+
     // DELEGATE TO BACKGROUND SCRIPT
     chrome.runtime.sendMessage({ action: "ANALYZE_URL", url: url }, (response) => {
-        // Race Condition Fix: If user moved mouse away before API replied, abort.
+        isResponded = true;
+        clearTimeout(wakeTimer);
+        clearTimeout(killTimer);
+        
+        // Failsafe 1: Port closed or Extension refreshed
+        if (chrome.runtime.lastError) {
+            if (currentHUD === hud) hud.remove();
+            return;
+        }
+
+        // Failsafe 2: User moved mouse away
         if (currentHUD !== hud) return;
 
+        // Failsafe 3: Backend failed to analyze
         if (!response || !response.success) {
-            // Silent fail is better for UX on hovers. If API is down, just vanish.
-            hud.remove();
+            hud.innerHTML = `<div style="color:#ff4c4c;">⚠️ Analysis Failed</div>`;
+            setTimeout(() => { if (currentHUD === hud) hud.remove(); }, 1500);
             return;
         }
 

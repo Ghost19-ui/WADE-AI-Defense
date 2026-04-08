@@ -1,5 +1,5 @@
 // --- background.js ---
-const API_URL = "https://reaper1907-wade-engine.hf.space"; 
+const API_URL = "https://reaper1909-wade-ips.hf.space"; 
 
 // ==========================================
 // 1. DYNAMIC THREAT INTEL SYNC
@@ -15,7 +15,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 function syncTrustedDomains() {
     console.log("🛡️ WADE: Syncing Global Trusted Domains (Tranco Top 10k)...");
     fetch(`${API_URL}/trusted-domains`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error("Server asleep or unavailable");
+            return res.json();
+        })
         .then(data => {
             if (data.success && data.domains) {
                 chrome.storage.local.set({ globalTrusted: data.domains }, () => {
@@ -99,7 +102,7 @@ function handleUrl(tabId, url) {
                 chrome.action.setBadgeBackgroundColor({color: "#ff003c"});
                 saveToHistory(url, 100, "Admin Force Blacklist");
                 
-                chrome.tabs.update(tabId, { url: chrome.runtime.getURL("block.html") });
+                chrome.tabs.sendMessage(tabId, { action: "BLOCK_PAGE", data: { threat_type: "Admin Force Blacklist", harm: "High Risk Detected" } }).catch(() => {});
                 return;
             }
 
@@ -138,7 +141,7 @@ function performScan(tabId, url) {
         chrome.tabs.sendMessage(tabId, { action: "SCAN_RESULT", data: data }).catch(() => {});
 
         if (data.risk_score > 75) {
-            chrome.tabs.update(tabId, { url: chrome.runtime.getURL("block.html") });
+            chrome.tabs.sendMessage(tabId, { action: "BLOCK_PAGE", data: data }).catch(() => {});
         }
     })
     .catch(() => chrome.action.setBadgeText({text: "ERR"}));
@@ -148,12 +151,19 @@ function performScan(tabId, url) {
 // 5. DOWNLOAD WARNING
 // ==========================================
 chrome.downloads.onCreated.addListener(function(downloadItem) {
-    if (downloadItem.filename.endsWith(".exe") || downloadItem.filename.endsWith(".zip") || downloadItem.filename.endsWith(".docm")) {
+    const fileUrl = downloadItem.url || "";
+    const fileName = downloadItem.filename ? downloadItem.filename.toLowerCase() : "";
+
+    // 1. Ignore invisible background downloads from other Chrome Extensions (like AdBlock)
+    if (fileUrl.startsWith("chrome-extension://")) return;
+
+    // 2. Alert only on highly dangerous executable and macro formats (Removed .zip)
+    if (fileName.endsWith(".exe") || fileName.endsWith(".docm") || fileName.endsWith(".vbs") || fileName.endsWith(".scr")) {
         chrome.notifications.create({
             type: "basic",
             iconUrl: "icons/icon.png", 
             title: "WADE Security Notice",
-            message: "File download detected. WADE does not scan local files. Do not enable macros!"
+            message: "Dangerous file type detected. WADE does not scan local files. Do not enable macros or run blindly!"
         });
     }
 });
@@ -225,5 +235,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } catch (e) {
             sendResponse({ success: false });
         }
+    }
+
+    // --- FIX: Handle Counter Attack Junk Data ---
+    if (request.action === "FETCH_JUNK_DATA") {
+        sendResponse({
+            success: true,
+            data: {
+                name: "Admin User",
+                email: "admin@localhost.local",
+                credit_card: "4532-XXXX-XXXX-XXXX"
+            }
+        });
+        return true;
     }
 });
