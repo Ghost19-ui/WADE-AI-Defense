@@ -285,6 +285,51 @@ trusted_cache = {
     "domains": []
 }
 
+# ==========================================
+# REACT DASHBOARD ENDPOINTS
+# ==========================================
+@app.get("/dashboard/stats")
+async def get_stats():
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT verdict, COUNT(*) FROM logs GROUP BY verdict")
+            results = dict(cursor.fetchall())
+            
+            safe = results.get("SAFE", 0)
+            phishing = results.get("MALICIOUS", 0)
+            suspicious = results.get("SUSPICIOUS", 0)
+            
+            return {
+                "total_scans": safe + phishing + suspicious,
+                "safe": safe,
+                "phishing": phishing,
+                "suspicious": suspicious
+            }
+    except Exception as e:
+        return {"total_scans": 0, "safe": 0, "phishing": 0, "suspicious": 0}
+
+@app.get("/dashboard/recent")
+async def get_recent_scans():
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, url, score, verdict, timestamp FROM logs ORDER BY timestamp DESC LIMIT 10")
+            rows = cursor.fetchall()
+            
+            scans = []
+            for row in rows:
+                scans.append({
+                    "_id": row[0],
+                    "url": row[1],
+                    "risk_score": row[2],
+                    "verdict": row[3],
+                    "timestamp": row[4]
+                })
+            return scans
+    except Exception:
+        return []
+    
 @app.get("/trusted-domains")
 def get_trusted_domains():
     global trusted_cache

@@ -30,5 +30,11 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icons/icon.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
