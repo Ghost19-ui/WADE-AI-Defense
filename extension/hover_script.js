@@ -1,28 +1,24 @@
-// hover_script.js - WADE Heads-Up Display (Optimized for Cache)
+// hover_script.js - WADE Heads-Up Display (Optimized for API Limits)
 
 let hoverTimer = null;
 let currentHUD = null;
 
-console.log("[WADE] Link Hover & Webmail Scanner Active.");
+console.log("[WADE] Link Hover Scanner Active.");
 
+// =========================================================================
+// 🛑 MASS SCANNER DISABLED TO PREVENT "429 TOO MANY REQUESTS" API CRASHES
+// For the presentation, we rely on Active Tab scanning + Hover scanning
+// =========================================================================
+/*
 function scanPageLinks() {
-    // Grab all standard hyperlinks on the page
     const links = document.querySelectorAll('a[href^="http"]');
-    
     links.forEach(link => {
-        // Skip links we have already scanned to save processing power
         if (link.hasAttribute('data-wade-scanned')) return;
         link.setAttribute('data-wade-scanned', 'true');
-
-        // Send the URL to background.js for AI/OSINT evaluation
         chrome.runtime.sendMessage({ action: "scan_link_heuristic", url: link.href }, (response) => {
-            
-            // If the backend AI scores this higher than 75, block it visually
             if (response && response.risk_score > 75) {
                 link.classList.add('wade-blocked-link');
                 link.innerText = `[🚨 WADE BLOCKED: PHISHING] ${link.innerText}`;
-                
-                // Physically prevent the click event
                 link.addEventListener('click', function(event) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -32,13 +28,10 @@ function scanPageLinks() {
         });
     });
 }
-
-// Run initial link scan
 scanPageLinks();
-
-// Watch for new emails/links appearing in Single Page Apps like Gmail
 const linkObserver = new MutationObserver(() => scanPageLinks());
 linkObserver.observe(document.body, { childList: true, subtree: true });
+*/
 
 // --- HELPERS ---
 function formatAge(days) {
@@ -54,7 +47,6 @@ function formatVT(vt) {
     if (!vt || !vt.total || vt.total === "Database" || vt.total === "N/A") return "📡 No Database Match";
     if (vt.malicious > 0) return `🦠 ${vt.malicious}/${vt.total} Vendors Flagged This`;
     
-    // FIX 3: Custom handling for Tranco/Local Fast-Path strings
     if (vt.total === "Tranco" || vt.total === "Local") return `✅ Clean (${vt.total} Database)`;
     
     return `✅ Clean (${vt.total} Engines)`;
@@ -65,12 +57,11 @@ document.addEventListener('mouseover', (e) => {
     const target = e.target.closest('a');
     if (target && target.href.startsWith('http') && target.href !== window.location.href) {
         clearTimeout(hoverTimer);
-        // Wait 800ms to ensure the user is actually reading the link
+        // Wait 800ms to ensure the user is actually reading the link before spending an API call
         hoverTimer = setTimeout(() => showHUD(target, target.href), 800);
     }
 });
 
-// FIX 2: Kill HUD anytime the mouse leaves, preventing ghost tooltips
 document.addEventListener('mouseout', (e) => {
     clearTimeout(hoverTimer);
     if (currentHUD) {
@@ -79,7 +70,6 @@ document.addEventListener('mouseout', (e) => {
     }
 });
 
-// --- UI LOGIC ---
 // --- UI LOGIC ---
 function showHUD(element, url) {
     if (currentHUD) currentHUD.remove();
@@ -110,10 +100,9 @@ function showHUD(element, url) {
     document.body.appendChild(hud);
     requestAnimationFrame(() => hud.style.opacity = '1');
 
-    // --- NEW: CLOUD STATUS MONITORS ---
+    // Cloud Status Monitors
     let isResponded = false;
     
-    // If it takes more than 2 seconds, the Cloud is likely waking up
     const wakeTimer = setTimeout(() => {
         if (!isResponded && currentHUD === hud) {
             const statusSpan = hud.querySelector('#wade-hud-status');
@@ -124,7 +113,6 @@ function showHUD(element, url) {
         }
     }, 2500);
 
-    // If it takes more than 12 seconds, kill the scan to prevent infinite loops
     const killTimer = setTimeout(() => {
         if (!isResponded && currentHUD === hud) {
             hud.innerHTML = `<div style="color:#ff4c4c; font-weight:bold;">⚠️ CLOUD API TIMEOUT</div>`;
@@ -138,16 +126,13 @@ function showHUD(element, url) {
         clearTimeout(wakeTimer);
         clearTimeout(killTimer);
         
-        // Failsafe 1: Port closed or Extension refreshed
         if (chrome.runtime.lastError) {
             if (currentHUD === hud) hud.remove();
             return;
         }
 
-        // Failsafe 2: User moved mouse away
         if (currentHUD !== hud) return;
 
-        // Failsafe 3: Backend failed to analyze
         if (!response || !response.success) {
             hud.innerHTML = `<div style="color:#ff4c4c;">⚠️ Analysis Failed</div>`;
             setTimeout(() => { if (currentHUD === hud) hud.remove(); }, 1500);

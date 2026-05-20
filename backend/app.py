@@ -202,7 +202,7 @@ class HybridScanner:
                 
         if GEMINI_API_KEY:
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 res = model.generate_content(f"{system_prompt}\n\n{user_prompt}")
                 clean_json = res.text.replace("```json", "").replace("```", "").strip()
                 return json.loads(clean_json)

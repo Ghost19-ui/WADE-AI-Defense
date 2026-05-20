@@ -46,9 +46,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function showBlockScreen(data) {
     if (document.getElementById('wade-block-screen')) return;
     
-    // Pass the target URL and Threat Type as URL parameters
+    // Pass the target URL and Threat Type as URL parameters so blocked.js can use them
     const targetUrl = encodeURIComponent(window.location.href);
     const threatType = encodeURIComponent(data.threat_type || "MALICIOUS THREAT DETECTED");
     
+    // Redirect to the internal extension block page to bypass CSP restrictions
     window.location.href = chrome.runtime.getURL(`blocked.html?target=${targetUrl}&reason=${threatType}`);
 }
