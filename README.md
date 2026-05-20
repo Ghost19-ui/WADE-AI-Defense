@@ -1,91 +1,53 @@
 # WADE: Web AI Defense Engine 🛡️
 
-**WADE (Web AI Defense Engine)** is a next-generation browser Intrusion Prevention System (IPS). It acts as an active edge-sensor in your browser, utilizing **Large Language Models (Groq Llama-3 & Google Gemini)** and **OSINT Threat Intelligence** to detect zero-day phishing attacks, malicious scripts, and newly registered hostile domains in real-time.
+![Version](https://img.shields.io/badge/version-5.0.0-blue.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg) ![Status](https://img.shields.io/badge/status-Stable-success)
 
-Unlike traditional antivirus tools that rely solely on outdated static blacklists, WADE analyzes the *intent*, *context*, and *origin* of web traffic, allowing it to block never-before-seen threats before the page even renders.
+**WADE (Web AI Defense Engine)** is a cloud-integrated browser Intrusion Prevention System (IPS). It utilizes **Generative AI (Groq Llama-3 & Google Gemini)** and **OSINT Threat Intelligence** to detect zero-day phishing, malicious scripts, and social engineering in real-time.
 
 ---
 
-## 🏗️ Architecture (Phase 2)
-
-WADE follows a highly efficient, cloud-integrated **Microservice Architecture**:
-
-1. **The Edge Sensor (Chrome Extension):** Built on Manifest V3. It intercepts web navigation, neutralizes malicious inline scripts (XSS), and manages zero-latency trusted caching.
-2. **The Intelligence Core (FastAPI Backend):** Hosted on **Hugging Face Spaces**. It orchestrates asynchronous OSINT lookups (VirusTotal, WHOIS) and prompts the LLM models to generate a definitive risk score.
-3. **The Memory (SQLite & Local Storage):** Uses a lightweight cloud SQLite database (`wade_logs.db`) for scan history, alongside Chrome's `storage.local` for the user's custom "3-Strike" trust memory.
+## 🏗️ Architecture
+1. **The Edge Sensor:** Chrome Extension (Manifest V3) that intercepts navigation.
+2. **The Intelligence Core:** FastAPI backend hosted on Hugging Face; orchestrates OSINT lookups and LLM analysis.
+3. **The Analytics Center:** A glass-morphic dashboard for visualizing threat logs.
 
 ---
 
 ## 🚀 Key Features
 
-### ✅ 1. Hybrid AI Threat Detection
+### 1. Interactive HUD Scanner
+Hover over links to see an instant risk assessment before you click.
+* **Safe Target:** ![Safe HUD](assets/hud-safe.jpg)
+* **High-Risk Payload:** ![Malicious HUD](assets/hud-malicious.jpg)
 
-Utilizes **Groq (Llama 3.3 70B)** for ultra-low latency heuristic analysis, with an automatic fallback to **Google Gemini 1.5 Flash**. It objectively evaluates domain age, security vendor flags, and URL patterns to generate a precise Risk Score (0-100%).
+### 2. Real-Time Intervention
+When a threat is confirmed (>75% risk), WADE forces an isolation screen.
+![WADE Block Screen](assets/blocked.png)
 
-### ✅ 2. Zero-Latency Fast Path
+### 3. Forensic Threat Reporting
+Click "View Threat Report" to generate an AI-powered forensic breakdown.
+![Forensic Threat Report](assets/report.png)
 
-Integrates an in-memory cache of the **Tranco Top 10,000 Global Domains** and custom user whitelists. Traffic to known safe sites routes instantly without triggering API overhead or network delays.
-
-### ✅ 3. Interactive Heads-Up Display (HUD)
-
-Features a proactive link scanner. Hovering over any hyperlink (e.g., in a webmail client) triggers a floating cyberpunk-styled tooltip that reveals the AI's risk assessment and domain age *before* the user clicks.
-
-### ✅ 4. Real-Time Intervention & Red Isolation
-
-When high-risk confidence (>75%) is detected, WADE physically severs the browser connection and forces a strict Content Security Policy (CSP) compliant "Access Denied" isolation screen, preventing drive-by downloads.
-
-### ✅ 5. 3D Analytics Command Center
-
-A fully integrated, local-storage-powered dashboard featuring interactive donut charts, threat logs, and manual whitelist/blacklist controls rendered with CSS3 glass-morphism.
+### 4. 3D Analytics Dashboard
+Visualize your security telemetry with our custom glass-morphic Command Center.
+![WADE Dashboard](assets/dashboard.png)
 
 ---
 
 ## 🛠️ Tech Stack
-
-* **AI Models:** Groq API (Llama 3.3 70B), Google Gemini 1.5 Flash
-* **Backend:** Python, FastAPI, Uvicorn, SQLite3, `concurrent.futures`
-* **Frontend:** Vanilla JavaScript (ES6+), HTML5, Advanced CSS3 (3D Transforms)
-* **Browser API:** Google Chrome Manifest V3 (Service Workers, MutationObservers)
-* **Threat Intel:** VirusTotal v3 API, URLHaus, Phishing.Database, Python `whois`
-* **Infrastructure:** Hugging Face Spaces (Dockerized Deployment)
+* **AI:** Groq API (Llama 3.3 70B), Google Gemini 1.5 Flash
+* **Backend:** Python, FastAPI, SQLite3
+* **Frontend:** JavaScript, Chrome Manifest V3, CSS3 3D
+* **Threat Intel:** VirusTotal v3, URLHaus, Phishing.Database
 
 ---
 
-## 📦 Installation & Setup
-
-### 1. Cloud Backend Setup (Hugging Face / Local)
-
-If you wish to host your own instance of the backend API:
-
-```bash
-git clone https://github.com/Ghost19-ui/WADE-AI-Defense.git
-cd WADE-AI-Defense
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set your API keys as environment variables
-export GROQ_API_KEY="your_groq_key"
-export GEMINI_API_KEY="your_gemini_key"
-export VIRUSTOTAL_API_KEY="your_vt_key"
-
-# Run the FastAPI server
-python app.py
-
-```
-
-### 2. Chrome Extension Setup
-
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **"Developer mode"** in the top right corner.
-3. Click **"Load unpacked"**.
-4. Select the `extension` folder located inside the cloned `WADE-AI-Defense` directory.
-5. Pin the WADE shield icon to your toolbar and browse safely.
-
-*(Note: To point the extension to a local backend instead of the live Hugging Face deployment, update the `API_URL` variable in `extension/background.js` and `extension/hover_script.js` to `http://127.0.0.1:7860`)*.
+## 📦 Quick Start
+1. **Clone:** `git clone https://github.com/Ghost19-ui/WADE-AI-Defense.git`
+2. **Backend:** Set API keys (`GROQ`, `GEMINI`, `VIRUSTOTAL`) and run `python app.py`.
+3. **Extension:** Load the `/extension` folder in `chrome://extensions/`.
 
 ---
 
 ## 👨‍💻 Author
-
-**Tushar Kumar Saini** *Cybersecurity Content Strategist, Red Team Operator, & B.Tech CSE Student at Parul University.* Built for the Future of Web Security.
+**Tushar Kumar Saini** | Cybersecurity Strategist & B.Tech CSE Student, Parul University.

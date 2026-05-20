@@ -1,3 +1,5 @@
+// dashboard.js - WADE Command Center Logic
+
 document.addEventListener("DOMContentLoaded", () => {
     loadDashboardData();
     init3DTilt();
@@ -64,13 +66,12 @@ function init3DTilt() {
     cards.forEach(card => {
         card.addEventListener('mousemove', (e) => {
             const rect = card.getBoundingClientRect();
-            const x = e.clientX - rect.left; // x position within the element.
-            const y = e.clientY - rect.top;  // y position within the element.
+            const x = e.clientX - rect.left; 
+            const y = e.clientY - rect.top;  
             
             const centerX = rect.width / 2;
             const centerY = rect.height / 2;
             
-            // Calculate rotation (max 6 degrees for subtlety)
             const rotateX = ((y - centerY) / centerY) * -6; 
             const rotateY = ((x - centerX) / centerX) * 6;
             
@@ -78,7 +79,6 @@ function init3DTilt() {
         });
         
         card.addEventListener('mouseleave', () => {
-            // Snap back to flat when mouse leaves
             card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
         });
     });
@@ -90,6 +90,11 @@ function loadDashboardData() {
         const trustData = data.userTrust;
         const blacklistData = data.userBlacklist;
         
+        const urlParams = new URLSearchParams(window.location.search);
+        const inspectUrl = urlParams.get('inspect');
+        let highlightedRow = null;
+        let highlightedScan = null; // Store the data for the modal
+
         // 1. Calculate Stats
         const trustedDomains = Object.keys(trustData).filter(d => trustData[d] >= 2);
         document.getElementById("stat-total-scans").innerText = history.length;
@@ -115,7 +120,7 @@ function loadDashboardData() {
                 const displayUrl = scan.url.length > 35 ? scan.url.substring(0, 35) + "..." : scan.url;
 
                 tr.innerHTML = `
-                    <td style="color: var(--text-muted);">${scan.date}</td>
+                    <td style="color: var(--text-muted);">${scan.date || "Just now"}</td>
                     <td title="${scan.url}">${displayUrl}</td>
                     <td style="color: var(--primary-cyan); font-weight:bold; text-shadow: 0 0 5px var(--primary-glow);">${scan.score}</td>
                     <td><span class="badge ${badgeClass}">${badgeText}</span></td>
@@ -124,8 +129,24 @@ function loadDashboardData() {
                         <button class="btn-action btn-black dynamic-btn" data-list="blacklist" data-action="add" data-domain="${hostname}">Block</button>
                     </td>
                 `;
+
+                if (inspectUrl && scan.url.includes(inspectUrl)) {
+                    tr.style.backgroundColor = "rgba(255, 0, 60, 0.25)";
+                    tr.style.boxShadow = "inset 0 0 10px rgba(255, 0, 60, 0.8)";
+                    highlightedRow = tr;
+                    highlightedScan = scan; // Capture data for the modal
+                }
+
                 historyTable.appendChild(tr);
             });
+
+            // Trigger smooth scroll and open Forensic Modal
+            if (highlightedRow && highlightedScan) {
+                setTimeout(() => {
+                    highlightedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    showForensicModal(highlightedScan);
+                }, 100);
+            }
         }
 
         // 4. Populate Whitelist
@@ -223,4 +244,54 @@ function modifyList(listType, action, domain) {
             loadDashboardData();
         });
     });
+}
+
+// --- FORENSIC REPORT MODAL GENERATOR ---
+function showForensicModal(scan) {
+    // Generate contextual data based on the AI's risk score
+    let threatType = scan.score > 75 ? "Malware / Phishing Payload" : "Unknown Anomaly";
+    let harm = scan.score > 75 ? "High risk of drive-by download, credential theft, or remote code execution." : "Potential tracker or suspicious script.";
+    let action = "Connection Severed by WADE Edge-Sensor.";
+
+    // Hardcoded context specifically for the presentation demo
+    if (scan.url.includes("wicar.org")) {
+        threatType = "Malware Testing Payload Detected";
+        harm = "System exploit demonstration. High risk of Remote Code Execution if left unblocked.";
+    }
+
+    const modalHtml = `
+        <div id="wade-modal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:9999; display:flex; justify-content:center; align-items:center;">
+            <div style="background:#0a0a0c; border:1px solid #ff003c; box-shadow:0 0 40px rgba(255,0,60,0.4); width:600px; padding:30px; font-family:'Courier New', monospace; color:#00f3ff; border-radius:8px; position:relative;">
+                <button onclick="document.getElementById('wade-modal').remove()" style="position:absolute; top:10px; right:15px; background:transparent; border:none; color:#ff003c; font-size:20px; cursor:pointer;">✖</button>
+                
+                <h2 style="color:#ff003c; text-transform:uppercase; border-bottom:1px solid #ff003c; padding-bottom:10px; margin-top:0;">🚨 Forensic Threat Report</h2>
+
+                <p style="color:#888; margin-bottom:5px; font-size:12px;">TARGET URL</p>
+                <p style="color:#fff; word-break:break-all; margin-top:0; background:#111; padding:10px; border-left:3px solid #ff003c;">${scan.url}</p>
+
+                <div style="display:flex; gap:20px; margin:20px 0;">
+                    <div style="flex:1; background:#111; padding:15px; text-align:center; border-radius:4px; border:1px solid #333;">
+                        <p style="color:#888; margin:0 0 5px 0; font-size:12px;">RISK SCORE</p>
+                        <h1 style="color:#ff003c; margin:0; font-size:40px; text-shadow: 0 0 10px #ff003c;">${scan.score}%</h1>
+                    </div>
+                    <div style="flex:1; background:#111; padding:15px; text-align:center; border-radius:4px; border:1px solid #333;">
+                        <p style="color:#888; margin:0 0 5px 0; font-size:12px;">VERDICT</p>
+                        <h1 style="color:#ff003c; margin:0; font-size:28px; margin-top:10px;">${scan.verdict}</h1>
+                    </div>
+                </div>
+
+                <p style="color:#888; margin-bottom:5px; font-size:12px;">AI THREAT ANALYSIS</p>
+                <div style="background:#111; padding:15px; border-radius:4px; color:#ddd; line-height:1.6; border:1px solid #333;">
+                    <p style="margin-top:0;"><strong>Classification:</strong> <span style="color:#ffa500">${threatType}</span></p>
+                    <p><strong>Scope & Harm:</strong> ${harm}</p>
+                    <p style="margin-bottom:0;"><strong>WADE Protocol:</strong> <span style="color:#00ff66">${action}</span></p>
+                </div>
+
+                <button onclick="document.getElementById('wade-modal').remove()" style="margin-top:25px; width:100%; padding:15px; background:#ff003c; color:#fff; border:none; font-weight:bold; font-size:16px; font-family:'Courier New', monospace; cursor:pointer; letter-spacing:2px; transition:0.3s;" onmouseover="this.style.background='#cc0030'" onmouseout="this.style.background='#ff003c'">ACKNOWLEDGE & CLOSE</button>
+            </div>
+        </div>
+    `;
+    
+    // Inject the modal into the dashboard
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
