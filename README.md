@@ -49,5 +49,5 @@ Visualize your security telemetry with our custom glass-morphic Command Center.
 
 ---
 
-## 👨‍💻 Author
-**Tushar Kumar Saini** | Cybersecurity Strategist & B.Tech CSE Student, Parul University.
+<!-- ## 👨‍💻 Author
+**Tushar Kumar Saini**, Savaliya Aditya| Cybersecurity Strategist & B.Tech CSE Student, Parul University. -->
