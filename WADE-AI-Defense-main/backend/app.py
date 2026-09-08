@@ -214,6 +214,7 @@ class HybridScanner:
 
 scanner = HybridScanner()
 
+# --- FIXED: Only ONE ScanRequest class ---
 class ScanRequest(BaseModel): 
     url: str
 
@@ -231,21 +232,24 @@ async def analyze_url(request: ScanRequest, background_tasks: BackgroundTasks):
             "harm": "High risk of drive-by download or remote code execution.", 
             "effect": "Connection severed by WADE IPS", 
             "domain_age": -1, 
-            "vt_data": {"malicious": 12, "total": 89}
+            "vt_data": {"malicious": 12, "total": 89},
+            "url": url  # <-- ADDED: Ensures frontend can display the domain
         }
 
     if domain in TRUSTED_AGES:
         return {
             "risk_score": 0, "verdict": "SAFE", "threat_type": "Official Trusted Domain",
             "harm": "None", "effect": "None", "domain_age": TRUSTED_AGES[domain],
-            "vt_data": {"malicious": 0, "total": 95}
+            "vt_data": {"malicious": 0, "total": 95},
+            "url": url  # <-- ADDED
         }
 
     if url in intel_db.malicious_urls:
         return {
             "risk_score": 100, "verdict": "MALICIOUS", "threat_type": "Confirmed Phishing (GitHub Feed)",
             "harm": "In Global Blacklist", "effect": "Credential Theft", "domain_age": -1, 
-            "vt_data": {"malicious": "High", "total": "OSINT"}
+            "vt_data": {"malicious": "High", "total": "OSINT"},
+            "url": url  # <-- ADDED
         }
 
     age = get_domain_age(url)
@@ -263,7 +267,8 @@ async def analyze_url(request: ScanRequest, background_tasks: BackgroundTasks):
         result['risk_score'] = 50
         result['threat_type'] = "Very Newly Registered Domain"
 
-    final_result = {**result, "domain_age": age, "vt_data": vt_data}
+    # --- FIXED: Added "url": url to the final result dictionary ---
+    final_result = {**result, "domain_age": age, "vt_data": vt_data, "url": url}
     background_tasks.add_task(log_scan, url, final_result)
     
     return final_result
